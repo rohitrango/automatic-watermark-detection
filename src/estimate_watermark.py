@@ -44,7 +44,8 @@ def PlotImage(image):
 	PlotImage: Give a normalized image matrix which can be used with implot, etc.
 	Maps to [0, 1]
 	"""
-	return (image - np.min(image))/(np.max(image) - np.min(image))
+	im = image.astype(float)
+	return (im - np.min(im))/(np.max(im) - np.min(im))
 
 
 def poisson_reconstruct(gradx, grady, kernel_size=KERNEL_SIZE, num_iters=100, h=0.1, 
@@ -107,3 +108,33 @@ def crop_watermark(gradx, grady, threshold=0.4, boundary_size=2):
 
 	return gradx[xm:xM, ym:yM, :] , grady[xm:xM, ym:yM, :]
 
+
+def normalized(img):
+	"""
+	Return the image between -1 to 1 so that its easier to find out things like 
+	correlation between images, convolutionss, etc.
+	Currently required for Chamfer distance for template matching.
+	"""
+	return (2*PlotImage(img)-1)
+
+
+def watermark_detector(img, gx, gy, thresh_low=200, thresh_high=220):
+	"""
+	Compute a verbose edge map using Canny edge detector, take its magnitude.
+	Assuming cropped values of gradients are given.
+	Returns image, start and end coordinates
+	"""
+	Wm = (np.average(np.sqrt(np.square(gx) + np.square(gy)), axis=2))
+
+	img_edgemap = (cv2.Canny(img, thresh_low, thresh_high))
+	chamfer_dist = cv2.filter2D(img_edgemap.astype(float), -1, Wm)
+	
+	rect = Wm.shape
+	index = np.unravel_index(np.argmax(chamfer_dist), img.shape[:-1])
+	print(index)
+	x,y = (index[0]-rect[0]/2), (index[1]-rect[1]/2)
+
+	im = img.copy()
+	cv2.rectangle(im, (y, x), (y+rect[1], x+rect[0]), (255, 0, 0))
+
+	return (im, (x, y), (rect[0], rect[1]))
