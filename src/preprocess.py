@@ -21,7 +21,7 @@ def preprocess(foldername, size=500, suffix="_processed"):
 			if img is not None:
 				m,n,p = img.shape
 				m_t, n_t = (size-m)/2, (size-n)/2
-				final_img = np.pad(img, ((m_t, size-m-m_t), (n_t, size-n-n_t), (0, 0)), mode='edge')
+				final_img = np.pad(img, ((m_t, size-m-m_t), (n_t, size-n-n_t), (0, 0)), mode='constant')
 				cv2.imwrite(os.sep.join([dest_folder, file]), final_img)
 				print("Saved to : %s"%(file))
 				print(final_img.shape)
