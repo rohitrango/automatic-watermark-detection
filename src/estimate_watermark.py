@@ -118,7 +118,7 @@ def normalized(img):
 	return (2*PlotImage(img)-1)
 
 
-def watermark_detector(img, gx, gy, thresh_low=200, thresh_high=220):
+def watermark_detector(img, gx, gy, thresh_low=200, thresh_high=220, printval=False):
 	"""
 	Compute a verbose edge map using Canny edge detector, take its magnitude.
 	Assuming cropped values of gradients are given.
@@ -131,7 +131,10 @@ def watermark_detector(img, gx, gy, thresh_low=200, thresh_high=220):
 	
 	rect = Wm.shape
 	index = np.unravel_index(np.argmax(chamfer_dist), img.shape[:-1])
-	print(index)
+
+	if printval:
+		print(index)
+
 	x,y = (index[0]-rect[0]/2), (index[1]-rect[1]/2)
 
 	im = img.copy()
