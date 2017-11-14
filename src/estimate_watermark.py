@@ -103,8 +103,8 @@ def crop_watermark(gradx, grady, threshold=0.4, boundary_size=2):
 	W_gray = image_threshold(np.average(W_mod, axis=2), threshold=threshold)
 	x, y = np.where(W_gray == 1)
 
-	xm, xM = np.min(x) - boundary_size, np.max(x) + boundary_size
-	ym, yM = np.min(y) - boundary_size, np.max(y) + boundary_size
+	xm, xM = np.min(x) - boundary_size - 1, np.max(x) + boundary_size + 1
+	ym, yM = np.min(y) - boundary_size - 1, np.max(y) + boundary_size + 1
 
 	return gradx[xm:xM, ym:yM, :] , grady[xm:xM, ym:yM, :]
 
@@ -117,7 +117,6 @@ def normalized(img):
 	"""
 	return (2*PlotImage(img)-1)
 
-
 def watermark_detector(img, gx, gy, thresh_low=200, thresh_high=220, printval=False):
 	"""
 	Compute a verbose edge map using Canny edge detector, take its magnitude.
@@ -128,16 +127,13 @@ def watermark_detector(img, gx, gy, thresh_low=200, thresh_high=220, printval=Fa
 
 	img_edgemap = (cv2.Canny(img, thresh_low, thresh_high))
 	chamfer_dist = cv2.filter2D(img_edgemap.astype(float), -1, Wm)
-	
+
 	rect = Wm.shape
 	index = np.unravel_index(np.argmax(chamfer_dist), img.shape[:-1])
-
 	if printval:
 		print(index)
 
 	x,y = (index[0]-rect[0]/2), (index[1]-rect[1]/2)
-
 	im = img.copy()
 	cv2.rectangle(im, (y, x), (y+rect[1], x+rect[0]), (255, 0, 0))
-
 	return (im, (x, y), (rect[0], rect[1]))

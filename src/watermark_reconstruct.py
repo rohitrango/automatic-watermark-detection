@@ -1,7 +1,12 @@
 import numpy as np
-import tensorflow as tf
 import cv2
 import os
+import scipy
+from scipy.sparse import *
+from scipy.sparse import linalg
+from estimate_watermark import *
+from closed_form_matting import *
+from numpy import nan, isnan
 
 def get_cropped_images(foldername, num_images, start, end, shape):
     '''
@@ -33,134 +38,125 @@ def get_cropped_images(foldername, num_images, start, end, shape):
 
     return (images_cropped, image_paths)
 
-# helpers that are going to be useful here
-sobel_x = tf.constant([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], tf.float32)
-sobel_y = tf.transpose(sobel_x)
 
-sobel_x_filter = tf.stack([sobel_x, sobel_x, sobel_x])
-sobel_x_filter = tf.stack([sobel_x_filter, sobel_x_filter, sobel_x_filter])
+# get sobel coordinates for y
+def _get_ysobel_coord(coord, shape):
+    i, j, k = coord
+    m, n, p = shape
+    return [
+        (i-1, j, k, -2), (i-1, j-1, k, -1), (i-1, j+1, k, -1),
+        (i+1, j, k,  2), (i+1, j-1, k,  1), (i+1, j+1, k,  1)
+    ]
 
-sobel_y_filter = tf.stack([sobel_y, sobel_y, sobel_y])
-sobel_y_filter = tf.stack([sobel_y_filter, sobel_y_filter, sobel_y_filter])
+# get sobel coordinates for x
+def _get_xsobel_coord(coord, shape):
+    i, j, k = coord
+    m, n, p = shape
+    return [
+        (i, j-1, k, -2), (i-1, j-1, k, -1), (i-1, j+1, k, -1),
+        (i, j+1, k,  2), (i+1, j-1, k,  1), (i+1, j+1, k,  1)
+    ]
 
-def phi_func(mtensor, epsilon=0.001):
-    return tf.sqrt(mtensor + epsilon**2)
-    
-# E_data
-def E_data(I, W, J, alpha):
-    est_error = tf.multiply(alpha, W) + tf.multiply(1-alpha, I) - J
-    est_error = phi_func(tf.square(est_error))
-    est_error = tf.reduce_mean(est_error)
-    return est_error
+# filter
+def _filter_list_item(coord, shape):
+    i, j, k, v = coord
+    m, n, p = shape
+    if i>=0 and i<m and j>=0 and j<n:
+        return True
 
-# regularizer term for I, W
-def E_reg(I, alpha):
-    alpha_ = tf.expand_dims(alpha, 0)
-    ax = tf.nn.conv2d(alpha_, sobel_x_filter, strides=[1, 1, 1, 1], padding="SAME")
-    ay = tf.nn.conv2d(alpha_, sobel_y_filter, strides=[1, 1, 1, 1], padding="SAME")
-    Ix2 = tf.square(tf.nn.conv2d(I, sobel_x_filter, strides=[1, 1, 1, 1], padding="SAME"))
-    Iy2 = tf.square(tf.nn.conv2d(I, sobel_y_filter, strides=[1, 1, 1, 1], padding="SAME"))
-    est_error = tf.multiply(tf.abs(ax), Ix2) + tf.multiply(tf.abs(ay), Iy2)
-    est_error = tf.reduce_mean(phi_func(est_error))
-    return est_error
+# Change to ravel index
+# also filters the wrong guys
+def _change_to_ravel_index(li, shape):
+    li = filter(lambda x: _filter_list_item(x, shape), li)
+    i, j, k, v = zip(*li)
+    return zip(np.ravel_multi_index((i, j, k), shape), v)
 
-# regularization term for alpha
-def E_reg_alpha(alpha):
-    alpha_ = tf.expand_dims(alpha, 0)
-    ax2 = tf.square(tf.nn.conv2d(alpha_, sobel_x_filter, strides=[1, 1, 1, 1], padding="SAME"))
-    ay2 = tf.square(tf.nn.conv2d(alpha_, sobel_y_filter, strides=[1, 1, 1, 1], padding="SAME"))
-    est_error = tf.reduce_mean(phi_func(ax2 + ay2))
-    return est_error
+# TODO: Consider wrap around of indices to remove the edge at the end of sobel
+# get Sobel sparse matrix for Y
+def get_ySobel_matrix(m, n, p):
+    size = m*n*p
+    shape = (m, n, p)
+    i, j, k = np.unravel_index(np.arange(size), (m, n, p))
+    ijk = zip(list(i), list(j), list(k))
+    ijk_nbrs = map(lambda x: _get_ysobel_coord(x, shape), ijk)
+    ijk_nbrs_to_index = map(lambda l: _change_to_ravel_index(l, shape), ijk_nbrs)
+    # we get a list of idx, values for a particular idx
+    # we have got the complete list now, map it to actual index
+    actual_map = []
+    for i, list_of_coords in enumerate(ijk_nbrs_to_index):
+        for coord in list_of_coords:
+            actual_map.append((i, coord[0], coord[1]))
 
-# fidelity term
-# W = all watermarks, or W_median
-def E_f(alpha, W, W_m):
-    aW = tf.multiply(alpha, W)
-    shape = aW.shape.as_list()
-    if len(shape) == 3:
-        aW = tf.expand_dims(aW, 0)
-    # find edge map of alpha*W
-    aWx = tf.nn.conv2d(aW, sobel_x_filter, strides=[1, 1, 1, 1], padding="SAME")
-    aWy = tf.nn.conv2d(aW, sobel_y_filter, strides=[1, 1, 1, 1], padding="SAME")
-    aW_ = tf.sqrt(tf.square(aWx) + tf.square(aWy))
-    
-    # find edge map of W_m
-    W_m__ = tf.expand_dims(W_m, 0)
-    W_mx = tf.nn.conv2d(W_m__, sobel_x_filter, strides=[1, 1, 1, 1], padding="SAME")
-    W_my = tf.nn.conv2d(W_m__, sobel_y_filter, strides=[1, 1, 1, 1], padding="SAME")
-    W_m_ = tf.sqrt(tf.square(W_mx) + tf.square(W_my))
-    
-    return tf.reduce_mean(phi_func(tf.square(aW_ - W_m_)))
-
-# auxiliary term
-def E_aux(W, W_k):
-    return tf.reduce_mean(tf.abs(W - W_k))
+    i, j, vals = zip(*actual_map)
+    return coo_matrix((vals, (i, j)), shape=(size, size))
 
 
-# We try to use Tensorflow to perform the 3 steps
-def image_watermark_decompose_model(num_images, m, n, chan=3, l_i=1, l_w=1, l_alpha=1, beta=1, gamma=1, lr=0.07):
-    # We have the following parameters
-    # num_images = number of images, m, n, number of channels
-    # lambda_i, lambda_w, lambda_alpha, beta, and gamma are parameters
-    # Input to network: 
-    #    J(k) = (num_images, m, n, chan) -> all the images
-    #    W_m = (m, n, chan)   -> estimate of the watermark obtained before
-    #    W_median =   (m, n, chan)   -> new estimate of W
-    #    alpha = (m, n, chan) -> estimate of alpha matte
-    # Entities to estimate
-    #    I(k) = (num_images, m, n, chan) -> all watermarked images
-    #    W(k) = (num_images, m, n, chan) -> all watermarks
-    
-    # All placeholders
-    J = tf.placeholder(tf.float32, shape=(num_images, m, n, chan), name='J')
-    alpha = tf.placeholder(tf.float32, shape=(m, n, chan), name='alpha')
-    W_m = tf.placeholder(tf.float32, shape=(m, n, chan), name='W_m')
-    W_median = tf.placeholder(tf.float32, shape=(m, n, chan), name='W_median')
-    
-    # All variables
-    I = tf.Variable(np.random.randn(num_images, m, n, chan), name='I', dtype=tf.float32)
-    W = tf.Variable(np.random.randn(num_images, m, n, chan), name='W', dtype=tf.float32)
-    
-    # compute loss
-    loss = E_data(I, W, J, alpha) + l_i*E_reg(I, alpha) + l_w*E_reg(W, alpha) \
-            + beta*E_f(alpha, W, W_m) + gamma*E_aux(W_median, W)
-    
-    optimizer = tf.train.GradientDescentOptimizer(lr).minimize(loss)
-    return {
-        'J': J,
-        'alpha': alpha,
-        'W_m': W_m,
-        'W_median': W_median, 
-        'I': I,
-        'W': W,
-        'loss': loss,
-        'step': optimizer,
-    }
+# get Sobel sparse matrix for X
+def get_xSobel_matrix(m, n, p):
+    size = m*n*p
+    shape = (m, n, p)
+    i, j, k = np.unravel_index(np.arange(size), (m, n, p))
+    ijk = zip(list(i), list(j), list(k))
+    ijk_nbrs = map(lambda x: _get_xsobel_coord(x, shape), ijk)
+    ijk_nbrs_to_index = map(lambda l: _change_to_ravel_index(l, shape), ijk_nbrs)
+    # we get a list of idx, values for a particular idx
+    # we have got the complete list now, map it to actual index
+    actual_map = []
+    for i, list_of_coords in enumerate(ijk_nbrs_to_index):
+        for coord in list_of_coords:
+            actual_map.append((i, coord[0], coord[1]))
 
+    i, j, vals = zip(*actual_map)
+    return coo_matrix((vals, (i, j)), shape=(size, size))
 
-# matte update
-def matte_update_model(num_images, m, n, chan=3, l_alpha=1, beta=1, lr=0.07):
-    # We use the rest of the items as constants and only estimate alpha
+# get estimated normalized alpha matte
+def estimate_normalized_alpha(J, W_m, num_images=30):
+    _Wm = (255*PlotImage(np.average(W_m, axis=2))).astype(np.uint8)
+    ret, thr = cv2.threshold(_Wm, 127, 255, cv2.THRESH_BINARY)
+    thr = np.stack([thr, thr, thr], axis=2)
 
-    # All placeholders
-    J = tf.placeholder(tf.float32, shape=(num_images, m, n, chan), name='J')
-    W_m = tf.placeholder(tf.float32, shape=(m, n, chan), name='W_m')
-    W_median = tf.placeholder(tf.float32, shape=(m, n, chan), name='W_median')
-    I = tf.placeholder(tf.float32, shape=(num_images, m, n, chan), name='I')
-    W = tf.placeholder(tf.float32, shape=(num_images, m, n, chan), name='W')
+    num, m, n, p = J.shape
+    alpha = np.zeros((num_images, m, n))
+    iterpatch = 900
 
-    alpha = tf.Variable(np.random.randn(m, n, chan), dtype=tf.float32)
+    print("Estimating normalized alpha using %d images."%(num_images))
+    # for all images, calculate alpha
+    for idx in xrange(num_images):
+        imgcopy = J[idx].copy()
+        for i in xrange(iterpatch):
+            r = np.random.randint(10)
+            x = np.random.randint(m-r)
+            y = np.random.randint(n-r)
+            imgcopy[x:x+r, y:y+r, :] = thr[x:x+r, y:y+r, :]
+        alph = closed_form_matte(J[idx], imgcopy)
+        alpha[idx] = alph
 
-    loss = E_data(I, W, J, alpha) + l_alpha*E_reg_alpha(alpha) + beta*E_f(alpha, W_median, W_m)
-    optimizer = tf.train.GradientDescentOptimizer(lr).minimize(loss)
+    alpha = np.median(alpha, axis=0)
+    return alpha
 
-    return {
-        'J': J,
-        'alpha': alpha,
-        'W_m': W_m,
-        'W_median': W_median, 
-        'I': I,
-        'W': W,
-        'loss': loss,
-        'step': optimizer,
-    }
+# estimate the blend factor C
+def estimate_blend_factor(J, W_m, alph, threshold=0.01*255):
+    alpha_n = alph
+    S = J.copy()
+    num_images = S.shape[0]
+    # for i in xrange(num_images):
+    #     S[i] = PlotImage(S[i])
+    R = (S<=threshold).astype(np.float64)
+
+    est_Ik = S.copy()
+    est_Ik[S>threshold] = nan
+    est_Ik = np.nanmedian(est_Ik, axis=0)
+    est_Ik[isnan(est_Ik)] = 0
+
+    alpha_k = R.copy()
+    beta_k = R*J
+    for i in xrange(num_images):
+        alpha_k[i] *= alpha_n*est_Ik
+        beta_k[i] -= R[i]*W_m
+
+    # we have alpha and beta, solve for c's now
+    c = []
+    for i in range(3):
+        c_i = np.sum(beta_k[:,:,:,i]*alpha_k[:,:,:,i])/np.sum(np.square(alpha_k[:,:,:,i]))
+        c.append(c_i/255)
+    return c

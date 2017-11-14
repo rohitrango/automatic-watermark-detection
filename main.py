@@ -17,52 +17,13 @@ im, start, end = watermark_detector(img, cropped_gx, cropped_gy)
 num_images = len(gxlist)
 
 J, img_paths = get_cropped_images('images/fotolia_processed', num_images, start, end, cropped_gx.shape)
+# get a random subset of J
+idx = [389, 144, 147, 468, 423, 92, 3, 354, 196, 53, 470, 445, 314, 349, 105, 366, 56, 168, 351, 15, 465, 368, 90, 96, 202, 54, 295, 137, 17, 79, 214, 413, 454, 305, 187, 4, 458, 330, 290, 73, 220, 118, 125, 180, 247, 243, 257, 194, 117, 320, 104, 252, 87, 95, 228, 324, 271, 398, 334, 148, 425, 190, 78, 151, 34, 310, 122, 376, 102, 260]
 
-num_images, m, n, chan = J.shape
-model = image_watermark_decompose_model(num_images, m, n, chan)
-model2 = matte_update_model(num_images, m, n, chan)
+# get threshold of W_m for alpha matte estimate
+alph_est = estimate_normalized_alpha(J, W_m)
+alph = np.stack([alph_est, alph_est, alph_est], axis=2)
+C = estimate_blend_factor(J, W_m, alph)
+# W_m_threshold = (255*PlotImage(np.average(W_m, axis=2))).astype(np.uint8)
+# ret, thr = cv2.threshold(W_m_threshold, 127, 255, cv2.THRESH_BINARY)  
 
-# define the variables
-# plt.imshow(PlotImage(est2))
-# I = np.random.randn(num_images, m, n, chan)
-# alpha = np.random.rand(m, n, chan)
-# W_median = W_m.copy()
-# # W = np.stack([W_m for _ in xrange(num_images)])			# list of W_k
-# saver = tf.train.Saver()
-# with tf.Session() as sess:
-# 	sess.run(tf.global_variables_initializer())
-# 	for __ in xrange(10):
-
-# 		# step 1 preprocess
-# 		alpha_ = sess.run(model2['alpha'])
-# 		# step 1
-# 		for i in xrange(5):
-# 			_, loss = sess.run([model['step'], model['loss']], feed_dict={
-# 				model['J']: J,
-# 				model['alpha']: alpha_,
-# 				model['W_m']: W_m,
-# 				model['W_median']: W_median,
-# 			})
-# 		print("Step 1: %f"%loss)
-
-# 		# step 2
-# 		W = sess.run(model['W'])
-# 		W_median = np.median(W, axis=0)
-# 		# print("Step 2")
-
-# 		# step 3 preprocess
-# 		I = sess.run(model['I'])
-# 		# step 3
-# 		for i in xrange(5):
-# 			_, loss = sess.run([model2['step'], model2['loss']], feed_dict={
-# 				model2['J']: J, 
-# 				model2['W_m']: W_m, 
-# 				model2['W_median']: W_median,
-# 				model2['I']: I,
-# 				model2['W']: W,
-# 			})
-# 		print("Step 3: %f"%(loss))
-# 		print("---------------------------------------")
-
-# 		plt.imshow(PlotImage(W_median))
-# 		plt.show()
