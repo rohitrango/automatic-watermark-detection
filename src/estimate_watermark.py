@@ -66,7 +66,7 @@ def poisson_reconstruct(gradx, grady, kernel_size=KERNEL_SIZE, num_iters=100, h=
 	else:
 		assert(boundary_image is not None)
 		assert(boundary_image.shape == laplacian.shape)
-		est = boundary_image
+		est = boundary_image.copy()
 
 	est[1:-1, 1:-1, :] = np.random.random((m-2, n-2, p))
 	loss = []

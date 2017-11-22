@@ -112,7 +112,7 @@ def get_xSobel_matrix(m, n, p):
 # get estimated normalized alpha matte
 def estimate_normalized_alpha(J, W_m, num_images=30):
     _Wm = (255*PlotImage(np.average(W_m, axis=2))).astype(np.uint8)
-    ret, thr = cv2.threshold(_Wm, 127, 255, cv2.THRESH_BINARY)
+    ret, thr = cv2.threshold(_Wm, 140, 255, cv2.THRESH_BINARY)
     thr = np.stack([thr, thr, thr], axis=2)
 
     num, m, n, p = J.shape
@@ -122,12 +122,13 @@ def estimate_normalized_alpha(J, W_m, num_images=30):
     print("Estimating normalized alpha using %d images."%(num_images))
     # for all images, calculate alpha
     for idx in xrange(num_images):
-        imgcopy = J[idx].copy()
-        for i in xrange(iterpatch):
-            r = np.random.randint(10)
-            x = np.random.randint(m-r)
-            y = np.random.randint(n-r)
-            imgcopy[x:x+r, y:y+r, :] = thr[x:x+r, y:y+r, :]
+        # imgcopy = J[idx].copy()
+        # for i in xrange(iterpatch):
+        #     r = np.random.randint(10)
+        #     x = np.random.randint(m-r)
+        #     y = np.random.randint(n-r)
+        #     imgcopy[x:x+r, y:y+r, :] = thr[x:x+r, y:y+r, :]
+        imgcopy = thr
         alph = closed_form_matte(J[idx], imgcopy)
         alpha[idx] = alph
 
@@ -141,10 +142,11 @@ def estimate_blend_factor(J, W_m, alph, threshold=0.01*255):
     num_images = S.shape[0]
     # for i in xrange(num_images):
     #     S[i] = PlotImage(S[i])
-    R = (S<=threshold).astype(np.float64)
+    # R = (S<=threshold).astype(np.float64)
+    R = (S>-1).astype(np.float64)
 
     est_Ik = S.copy()
-    est_Ik[S>threshold] = nan
+    # est_Ik[S>threshold] = nan
     est_Ik = np.nanmedian(est_Ik, axis=0)
     est_Ik[isnan(est_Ik)] = 0
 
@@ -153,10 +155,23 @@ def estimate_blend_factor(J, W_m, alph, threshold=0.01*255):
     for i in xrange(num_images):
         alpha_k[i] *= alpha_n*est_Ik
         beta_k[i] -= R[i]*W_m
-
+    beta_k = np.abs(beta_k)
     # we have alpha and beta, solve for c's now
     c = []
     for i in range(3):
         c_i = np.sum(beta_k[:,:,:,i]*alpha_k[:,:,:,i])/np.sum(np.square(alpha_k[:,:,:,i]))
-        c.append(c_i/255)
+        c.append(c_i)
     return c
+
+    # TODO: Remove the blend factor formulation with something more suitable
+    # Like taking the edge details instead of sum of squares of intensity
+    # c=0.1
+    #     ...: while c<1:
+    #     ...:     img = (S[61]-c*alph*est_Ik)
+    #     ...:     sx = cv2.Sobel(img, cv2.CV_64F, 1, 0, 3)
+    #     ...:     sy = cv2.Sobel(img, cv2.CV_64F, 0, 1, 3)
+    #     ...:     edge = np.sqrt(sx**2 + sy**2)
+    #     ...:     edge = img
+    #     ...:     plt.subplot(3,3,int(c*10)); plt.imshow(PlotImage(edge));
+    #     ...:     c+=0.1
+    #     ...:     print(np.mean(np.square(edge)))
