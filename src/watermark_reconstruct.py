@@ -136,42 +136,172 @@ def estimate_normalized_alpha(J, W_m, num_images=30):
     return alpha
 
 # estimate the blend factor C
+# def estimate_blend_factor(J, W_m, alph, threshold=0.01*255):
+#     alpha_n = alph
+#     S = J.copy()
+#     num_images = S.shape[0]
+#     # for i in xrange(num_images):
+#     #     S[i] = PlotImage(S[i])
+#     # R = (S<=threshold).astype(np.float64)
+#     R = (S>-1).astype(np.float64)
+
+#     est_Ik = S.copy()
+#     # est_Ik[S>threshold] = nan
+#     est_Ik = np.nanmedian(est_Ik, axis=0)
+#     est_Ik[isnan(est_Ik)] = 0
+
+#     alpha_k = R.copy()
+#     beta_k = R*J
+#     for i in xrange(num_images):
+#         alpha_k[i] *= alpha_n*est_Ik
+#         beta_k[i] -= R[i]*W_m
+#     beta_k = np.abs(beta_k)
+#     # we have alpha and beta, solve for c's now
+#     c = []
+#     for i in range(3):
+#         c_i = np.sum(beta_k[:,:,:,i]*alpha_k[:,:,:,i])/np.sum(np.square(alpha_k[:,:,:,i]))
+#         c.append(c_i)
+#     return c
+
 def estimate_blend_factor(J, W_m, alph, threshold=0.01*255):
-    alpha_n = alph
-    S = J.copy()
-    num_images = S.shape[0]
-    # for i in xrange(num_images):
-    #     S[i] = PlotImage(S[i])
-    # R = (S<=threshold).astype(np.float64)
-    R = (S>-1).astype(np.float64)
+    K, m, n, p = J.shape
+    Jm = (J - W_m)
+    gx_jm = np.zeros(J.shape)
+    gy_jm = np.zeros(J.shape)
 
-    est_Ik = S.copy()
-    # est_Ik[S>threshold] = nan
-    est_Ik = np.nanmedian(est_Ik, axis=0)
-    est_Ik[isnan(est_Ik)] = 0
+    for i in xrange(K):
+        gx_jm[i] = cv2.Sobel(Jm[i], cv2.CV_64F, 1, 0, 3)
+        gy_jm[i] = cv2.Sobel(Jm[i], cv2.CV_64F, 0, 1, 3)
 
-    alpha_k = R.copy()
-    beta_k = R*J
-    for i in xrange(num_images):
-        alpha_k[i] *= alpha_n*est_Ik
-        beta_k[i] -= R[i]*W_m
-    beta_k = np.abs(beta_k)
-    # we have alpha and beta, solve for c's now
-    c = []
-    for i in range(3):
-        c_i = np.sum(beta_k[:,:,:,i]*alpha_k[:,:,:,i])/np.sum(np.square(alpha_k[:,:,:,i]))
-        c.append(c_i)
-    return c
+    Jm_grad = np.sqrt(gx_jm**2 + gy_jm**2)
 
-    # TODO: Remove the blend factor formulation with something more suitable
-    # Like taking the edge details instead of sum of squares of intensity
-    # c=0.1
-    #     ...: while c<1:
-    #     ...:     img = (S[61]-c*alph*est_Ik)
-    #     ...:     sx = cv2.Sobel(img, cv2.CV_64F, 1, 0, 3)
-    #     ...:     sy = cv2.Sobel(img, cv2.CV_64F, 0, 1, 3)
-    #     ...:     edge = np.sqrt(sx**2 + sy**2)
-    #     ...:     edge = img
-    #     ...:     plt.subplot(3,3,int(c*10)); plt.imshow(PlotImage(edge));
-    #     ...:     c+=0.1
-    #     ...:     print(np.mean(np.square(edge)))
+    est_Ik = alph*np.median(J, axis=0)
+    gx_estIk = cv2.Sobel(est_Ik, cv2.CV_64F, 1, 0, 3)
+    gy_estIk = cv2.Sobel(est_Ik, cv2.CV_64F, 0, 1, 3)
+    estIk_grad = np.sqrt(gx_estIk**2 + gy_estIk**2)
+
+    C = []
+    for i in xrange(3):
+        c_i = np.sum(Jm_grad[:,:,:,i]*estIk_grad[:,:,i])/np.sum(np.square(estIk_grad[:,:,i]))/K
+        print(c_i)
+        C.append(c_i)
+
+    return C, est_Ik
+
+
+def Func_Phi(X, epsilon=1e-3):
+    return np.sqrt(X + epsilon**2)
+
+def Func_Phi_deriv(X, epsilon=1e-3):
+    return 0.5/Func_Phi(X, epsilon)
+
+def solve_images(J, W_m, alpha, W_init, gamma=1, beta=0.01, lambda_w=0.01, lambda_i=0.01, lambda_a=0.01, iters=2):
+    '''
+    Master solver, follows the algorithm given in the supplementary.
+    W_init: Initial value of W
+    Step 1: Image Watermark decomposition
+    '''
+    # prepare variables
+    K, m, n, p = J.shape
+    size = m*n*p
+
+    sobelx = get_xSobel_matrix(m, n, p)
+    sobely = get_ySobel_matrix(m, n, p)
+    Ik = np.zeros(J.shape)
+    Wk = np.zeros(J.shape)
+    for i in xrange(K):
+        Ik[i] = J[i] - W_m
+        Wk[i] = W_init.copy()
+
+    # This is for median images
+    W = W_init.copy()
+
+    # Iterations
+    for _ in xrange(iters):
+
+        # Step 1
+        print("Step 1")
+        alpha_gx = cv2.Sobel(alpha, cv2.CV_64F, 1, 0, 3)
+        alpha_gy = cv2.Sobel(alpha, cv2.CV_64F, 0, 1, 3)
+
+        Wm_gx = cv2.Sobel(W_m, cv2.CV_64F, 1, 0, 3)
+        Wm_gy = cv2.Sobel(W_m, cv2.CV_64F, 0, 1, 3)
+
+        cx = diags(np.abs(alpha_gx).reshape(-1))
+        cy = diags(np.abs(alpha_gy).reshape(-1))
+
+        alpha_diag = diags(alpha.reshape(-1))
+        alpha_bar_diag = diags((1-alpha).reshape(-1))
+
+        for i in xrange(K):
+            # prep vars
+            Wkx = cv2.Sobel(Wk[i], cv2.CV_64F, 1, 0, 3)
+            Wky = cv2.Sobel(Wk[i], cv2.CV_64F, 0, 1, 3)
+
+            Ikx = cv2.Sobel(Ik[i], cv2.CV_64F, 1, 0, 3)
+            Iky = cv2.Sobel(Ik[i], cv2.CV_64F, 0, 1, 3)
+
+            alphaWk = alpha*Wk[i]
+            alphaWk_gx = cv2.Sobel(alphaWk, cv2.CV_64F, 1, 0, 3)
+            alphaWk_gy = cv2.Sobel(alphaWk, cv2.CV_64F, 0, 1, 3)        
+
+            phi_data = diags( Func_Phi_deriv(np.square(alpha*Wk[i] + (1-alpha)*Ik[i] - J[i]).reshape(-1)) )
+            phi_W = diags( Func_Phi_deriv(np.square( np.abs(alpha_gx)*Wkx + np.abs(alpha_gy)*Wky  ).reshape(-1)) )
+            phi_I = diags( Func_Phi_deriv(np.square( np.abs(alpha_gx)*Ikx + np.abs(alpha_gy)*Iky  ).reshape(-1)) )
+            phi_f = diags( Func_Phi_deriv( ((Wm_gx - alphaWk_gx)**2 + (Wm_gy - alphaWk_gy)**2 ).reshape(-1)) )
+            phi_aux = diags( Func_Phi_deriv(np.square(Wk[i] - W).reshape(-1)) )
+            phi_rI = diags( Func_Phi_deriv( np.abs(alpha_gx)*(Ikx**2) + np.abs(alpha_gy)*(Iky**2) ).reshape(-1) )
+            phi_rW = diags( Func_Phi_deriv( np.abs(alpha_gx)*(Wkx**2) + np.abs(alpha_gy)*(Wky**2) ).reshape(-1) )
+
+            L_i = sobelx.T.dot(cx*phi_rI).dot(sobelx) + sobely.T.dot(cy*phi_rI).dot(sobely)
+            L_w = sobelx.T.dot(cx*phi_rW).dot(sobelx) + sobely.T.dot(cy*phi_rW).dot(sobely)
+            L_f = sobelx.T.dot(phi_f).dot(sobelx) + sobely.T.dot(phi_f).dot(sobely)
+            A_f = alpha_diag.T.dot(L_f).dot(alpha_diag) + gamma*phi_aux
+
+            bW = alpha_diag.dot(phi_data).dot(J[i].reshape(-1)) + beta*L_f.dot(W_m.reshape(-1)) + gamma*phi_aux.dot(W.reshape(-1))
+            bI = alpha_bar_diag.dot(phi_data).dot(J[i].reshape(-1))
+
+            A = vstack([hstack([(alpha_diag**2)*phi_data + lambda_w*L_w + beta*A_f, alpha_diag*alpha_bar_diag*phi_data]), \
+                         hstack([alpha_diag*alpha_bar_diag*phi_data, (alpha_bar_diag**2)*phi_data + lambda_i*L_i])]).tocsr()
+
+            b = np.hstack([bW, bI])
+            x = linalg.spsolve(A, b)
+            
+            Wk[i] = x[:size].reshape(m, n, p)
+            Ik[i] = x[size:].reshape(m, n, p)
+            plt.subplot(2,1,1); plt.imshow(PlotImage(Wk[i]))
+            plt.subplot(2,1,2); plt.imshow(PlotImage(Ik[i])); plt.show()
+            print(i)
+
+        # Step 2
+        print("Step 2")
+        W = np.median(Wk, axis=0)
+        
+        # Step 3
+        print("Step 3")
+        W_diag = diags(W.reshape(-1))
+        
+        for i in range(K):
+            alphaWk = alpha*Wk[i]
+            alphaWk_gx = cv2.Sobel(alphaWk, cv2.CV_64F, 1, 0, 3)
+            alphaWk_gy = cv2.Sobel(alphaWk, cv2.CV_64F, 0, 1, 3)        
+            phi_f = diags( Func_Phi_deriv( ((Wm_gx - alphaWk_gx)**2 + (Wm_gy - alphaWk_gy)**2 ).reshape(-1)) )
+            
+            phi_k = diags(Func_Phi_deriv(((alpha*Wk[i] + (1-alpha)*Ik[i] - J[i])**2)*(W-Ik[i])).reshape(-1))
+            phi_alpha = diags(Func_Phi_deriv(alpha_gx**2 + alpha_gy**2).reshape(-1))
+            L_alpha = sobelx.T.dot(phi_alpha.dot(sobelx)) + sobely.T.dot(phi_alpha.dot(sobely))
+
+            L_f = sobelx.T.dot(phi_f).dot(sobelx) + sobely.dot(phi_f).dot(sobely)
+            A_tilde_f = W_diag.dot(L_f).dot(W_diag)
+
+            # Ax = b, setting up A
+            if i==0:
+                A1 = phi_k + lambda_a*L_alpha + beta*A_tilde_f
+                b1 = phi_k.dot((J[i]-Ik[i]).reshape(-1)) + beta*W_diag.dot(L_f).dot(W_m.reshape(-1))
+            else:
+                A1 += (phi_k + lambda_a*L_alpha + beta*A_tilde_f)
+                b1 += (phi_k.dot((J[i]-Ik[i]).reshape(-1)) + beta*W_diag.dot(L_f).dot(W_m.reshape(-1)))
+
+        alpha = linalg.spsolve(A1, b1).reshape(m,n,p)
+    
+    return (Wk, Ik, W, alpha)
