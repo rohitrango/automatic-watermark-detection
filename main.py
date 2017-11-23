@@ -38,9 +38,10 @@ W = Wm.copy()
 for i in xrange(3):
 	W[:,:,i]/=C[i]
 
+Jt = J[idx]
 # now we have the values of alpha, Wm, J
 # Solve for all images
-
+Wk, Ik, W, alpha = solve_images(Jt, W_m, alpha, W)
 
 
 # W_m_threshold = (255*PlotImage(np.average(W_m, axis=2))).astype(np.uint8)

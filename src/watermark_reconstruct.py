@@ -195,7 +195,7 @@ def Func_Phi(X, epsilon=1e-3):
 def Func_Phi_deriv(X, epsilon=1e-3):
     return 0.5/Func_Phi(X, epsilon)
 
-def solve_images(J, W_m, alpha, W_init, gamma=1, beta=0.01, lambda_w=0.01, lambda_i=0.01, lambda_a=0.01, iters=2):
+def solve_images(J, W_m, alpha, W_init, gamma=1, beta=1, lambda_w=0.005, lambda_i=1, lambda_a=0.01, iters=4):
     '''
     Master solver, follows the algorithm given in the supplementary.
     W_init: Initial value of W
@@ -269,13 +269,20 @@ def solve_images(J, W_m, alpha, W_init, gamma=1, beta=0.01, lambda_w=0.01, lambd
             
             Wk[i] = x[:size].reshape(m, n, p)
             Ik[i] = x[size:].reshape(m, n, p)
-            plt.subplot(2,1,1); plt.imshow(PlotImage(Wk[i]))
-            plt.subplot(2,1,2); plt.imshow(PlotImage(Ik[i])); plt.show()
+            plt.subplot(3,1,1); plt.imshow(PlotImage(J[i]))
+            plt.subplot(3,1,2); plt.imshow(PlotImage(Wk[i]))
+            plt.subplot(3,1,3); plt.imshow(PlotImage(Ik[i]))
+            plt.draw()
+            plt.pause(0.001)
             print(i)
 
         # Step 2
         print("Step 2")
         W = np.median(Wk, axis=0)
+
+        plt.imshow(PlotImage(W))
+        plt.draw()
+        plt.pause(0.001)
         
         # Step 3
         print("Step 3")
@@ -287,21 +294,26 @@ def solve_images(J, W_m, alpha, W_init, gamma=1, beta=0.01, lambda_w=0.01, lambd
             alphaWk_gy = cv2.Sobel(alphaWk, cv2.CV_64F, 0, 1, 3)        
             phi_f = diags( Func_Phi_deriv( ((Wm_gx - alphaWk_gx)**2 + (Wm_gy - alphaWk_gy)**2 ).reshape(-1)) )
             
-            phi_k = diags(Func_Phi_deriv(((alpha*Wk[i] + (1-alpha)*Ik[i] - J[i])**2)*(W-Ik[i])).reshape(-1))
+            phi_kA = diags(( (Func_Phi_deriv((((alpha*Wk[i] + (1-alpha)*Ik[i] - J[i])**2)))) * ((W-Ik[i])**2)  ).reshape(-1))
+            phi_kB = (( (Func_Phi_deriv((((alpha*Wk[i] + (1-alpha)*Ik[i] - J[i])**2))))*(W-Ik[i])*(J[i]-Ik[i])  ).reshape(-1))
+
             phi_alpha = diags(Func_Phi_deriv(alpha_gx**2 + alpha_gy**2).reshape(-1))
             L_alpha = sobelx.T.dot(phi_alpha.dot(sobelx)) + sobely.T.dot(phi_alpha.dot(sobely))
 
-            L_f = sobelx.T.dot(phi_f).dot(sobelx) + sobely.dot(phi_f).dot(sobely)
-            A_tilde_f = W_diag.dot(L_f).dot(W_diag)
-
+            L_f = sobelx.T.dot(phi_f).dot(sobelx) + sobely.T.dot(phi_f).dot(sobely)
+            A_tilde_f = W_diag.T.dot(L_f).dot(W_diag)
             # Ax = b, setting up A
             if i==0:
-                A1 = phi_k + lambda_a*L_alpha + beta*A_tilde_f
-                b1 = phi_k.dot((J[i]-Ik[i]).reshape(-1)) + beta*W_diag.dot(L_f).dot(W_m.reshape(-1))
+                A1 = phi_kA + lambda_a*L_alpha + beta*A_tilde_f
+                b1 = phi_kB + beta*W_diag.dot(L_f).dot(W_m.reshape(-1))
             else:
-                A1 += (phi_k + lambda_a*L_alpha + beta*A_tilde_f)
-                b1 += (phi_k.dot((J[i]-Ik[i]).reshape(-1)) + beta*W_diag.dot(L_f).dot(W_m.reshape(-1)))
+                A1 += (phi_kA + lambda_a*L_alpha + beta*A_tilde_f)
+                b1 += (phi_kB + beta*W_diag.T.dot(L_f).dot(W_m.reshape(-1)))
 
         alpha = linalg.spsolve(A1, b1).reshape(m,n,p)
+
+        plt.imshow(PlotImage(alpha))
+        plt.draw()
+        plt.pause(0.001)
     
     return (Wk, Ik, W, alpha)
