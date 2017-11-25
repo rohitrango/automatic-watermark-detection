@@ -110,9 +110,15 @@ def get_xSobel_matrix(m, n, p):
     return coo_matrix((vals, (i, j)), shape=(size, size))
 
 # get estimated normalized alpha matte
-def estimate_normalized_alpha(J, W_m, num_images=30):
+def estimate_normalized_alpha(J, W_m, num_images=30, threshold=170, invert=False, adaptive=False, adaptive_threshold=21, c2=10):
     _Wm = (255*PlotImage(np.average(W_m, axis=2))).astype(np.uint8)
-    ret, thr = cv2.threshold(_Wm, 140, 255, cv2.THRESH_BINARY)
+    if adaptive:
+        thr = cv2.adaptiveThreshold(_Wm, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, adaptive_threshold, c2)
+    else:
+        ret, thr = cv2.threshold(_Wm, threshold, 255, cv2.THRESH_BINARY)
+
+    if invert:
+        thr = 255-thr
     thr = np.stack([thr, thr, thr], axis=2)
 
     num, m, n, p = J.shape
@@ -122,46 +128,12 @@ def estimate_normalized_alpha(J, W_m, num_images=30):
     print("Estimating normalized alpha using %d images."%(num_images))
     # for all images, calculate alpha
     for idx in xrange(num_images):
-        # imgcopy = J[idx].copy()
-        # for i in xrange(iterpatch):
-        #     r = np.random.randint(10)
-        #     x = np.random.randint(m-r)
-        #     y = np.random.randint(n-r)
-        #     imgcopy[x:x+r, y:y+r, :] = thr[x:x+r, y:y+r, :]
         imgcopy = thr
         alph = closed_form_matte(J[idx], imgcopy)
         alpha[idx] = alph
 
     alpha = np.median(alpha, axis=0)
     return alpha
-
-# estimate the blend factor C
-# def estimate_blend_factor(J, W_m, alph, threshold=0.01*255):
-#     alpha_n = alph
-#     S = J.copy()
-#     num_images = S.shape[0]
-#     # for i in xrange(num_images):
-#     #     S[i] = PlotImage(S[i])
-#     # R = (S<=threshold).astype(np.float64)
-#     R = (S>-1).astype(np.float64)
-
-#     est_Ik = S.copy()
-#     # est_Ik[S>threshold] = nan
-#     est_Ik = np.nanmedian(est_Ik, axis=0)
-#     est_Ik[isnan(est_Ik)] = 0
-
-#     alpha_k = R.copy()
-#     beta_k = R*J
-#     for i in xrange(num_images):
-#         alpha_k[i] *= alpha_n*est_Ik
-#         beta_k[i] -= R[i]*W_m
-#     beta_k = np.abs(beta_k)
-#     # we have alpha and beta, solve for c's now
-#     c = []
-#     for i in range(3):
-#         c_i = np.sum(beta_k[:,:,:,i]*alpha_k[:,:,:,i])/np.sum(np.square(alpha_k[:,:,:,i]))
-#         c.append(c_i)
-#     return c
 
 def estimate_blend_factor(J, W_m, alph, threshold=0.01*255):
     K, m, n, p = J.shape
@@ -218,6 +190,9 @@ def solve_images(J, W_m, alpha, W_init, gamma=1, beta=1, lambda_w=0.005, lambda_
 
     # Iterations
     for _ in xrange(iters):
+
+        print("------------------------------------")
+        print("Iteration: %d"%(_))
 
         # Step 1
         print("Step 1")
@@ -317,3 +292,14 @@ def solve_images(J, W_m, alpha, W_init, gamma=1, beta=1, lambda_w=0.005, lambda_
         plt.pause(0.001)
     
     return (Wk, Ik, W, alpha)
+
+
+def changeContrastImage(J, I):
+    cJ1 = J[0, 0, :]
+    cJ2 = J[-1, -1, :]
+
+    cI1 = I[0, 0, :]
+    cI2 = I[-1,-1, :]
+
+    I_m = cJ1 + (I-cI1)/(cI2-cI1)*(cJ2-cJ1)
+    return I_m

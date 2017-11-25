@@ -19,7 +19,7 @@ num_images = len(gxlist)
 J, img_paths = get_cropped_images('images/fotolia_processed', num_images, start, end, cropped_gx.shape)
 # get a random subset of J
 idx = [389, 144, 147, 468, 423, 92, 3, 354, 196, 53, 470, 445, 314, 349, 105, 366, 56, 168, 351, 15, 465, 368, 90, 96, 202, 54, 295, 137, 17, 79, 214, 413, 454, 305, 187, 4, 458, 330, 290, 73, 220, 118, 125, 180, 247, 243, 257, 194, 117, 320, 104, 252, 87, 95, 228, 324, 271, 398, 334, 148, 425, 190, 78, 151, 34, 310, 122, 376, 102, 260]
-idx = idx[:50]
+idx = idx[:25]
 # Wm = (255*PlotImage(W_m))
 Wm = W_m - W_m.min()
 
@@ -41,9 +41,7 @@ for i in xrange(3):
 Jt = J[idx]
 # now we have the values of alpha, Wm, J
 # Solve for all images
-Wk, Ik, W, alpha = solve_images(Jt, W_m, alpha, W)
-
-
+Wk, Ik, W, alpha1 = solve_images(Jt, W_m, alpha, W)
 # W_m_threshold = (255*PlotImage(np.average(W_m, axis=2))).astype(np.uint8)
 # ret, thr = cv2.threshold(W_m_threshold, 127, 255, cv2.THRESH_BINARY)  
 
