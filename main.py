@@ -38,7 +38,7 @@ W = Wm.copy()
 for i in xrange(3):
 	W[:,:,i]/=C[i]
 
-Jt = J[idx]
+Jt = J[:25]
 # now we have the values of alpha, Wm, J
 # Solve for all images
 Wk, Ik, W, alpha1 = solve_images(Jt, W_m, alpha, W)
