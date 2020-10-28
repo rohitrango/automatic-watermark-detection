@@ -4,8 +4,8 @@ import os
 import scipy
 from scipy.sparse import *
 from scipy.sparse import linalg
-from estimate_watermark import *
-from closed_form_matting import *
+from .estimate_watermark import *
+from .closed_form_matting import *
 from numpy import nan, isnan
 
 def get_cropped_images(foldername, num_images, start, end, shape):
