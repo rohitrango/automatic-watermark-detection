@@ -4,8 +4,8 @@ import os
 import scipy
 from scipy.sparse import *
 from scipy.sparse import linalg
-from estimate_watermark import *
-from closed_form_matting import *
+from .estimate_watermark import *
+from .closed_form_matting import *
 from numpy import nan, isnan
 
 def get_cropped_images(foldername, num_images, start, end, shape):
@@ -127,7 +127,7 @@ def estimate_normalized_alpha(J, W_m, num_images=30, threshold=170, invert=False
 
     print("Estimating normalized alpha using %d images."%(num_images))
     # for all images, calculate alpha
-    for idx in xrange(num_images):
+    for idx in range(num_images):
         imgcopy = thr
         alph = closed_form_matte(J[idx], imgcopy)
         alpha[idx] = alph
@@ -141,7 +141,7 @@ def estimate_blend_factor(J, W_m, alph, threshold=0.01*255):
     gx_jm = np.zeros(J.shape)
     gy_jm = np.zeros(J.shape)
 
-    for i in xrange(K):
+    for i in range(K):
         gx_jm[i] = cv2.Sobel(Jm[i], cv2.CV_64F, 1, 0, 3)
         gy_jm[i] = cv2.Sobel(Jm[i], cv2.CV_64F, 0, 1, 3)
 
@@ -153,7 +153,7 @@ def estimate_blend_factor(J, W_m, alph, threshold=0.01*255):
     estIk_grad = np.sqrt(gx_estIk**2 + gy_estIk**2)
 
     C = []
-    for i in xrange(3):
+    for i in range(3):
         c_i = np.sum(Jm_grad[:,:,:,i]*estIk_grad[:,:,i])/np.sum(np.square(estIk_grad[:,:,i]))/K
         print(c_i)
         C.append(c_i)
@@ -181,7 +181,7 @@ def solve_images(J, W_m, alpha, W_init, gamma=1, beta=1, lambda_w=0.005, lambda_
     sobely = get_ySobel_matrix(m, n, p)
     Ik = np.zeros(J.shape)
     Wk = np.zeros(J.shape)
-    for i in xrange(K):
+    for i in range(K):
         Ik[i] = J[i] - W_m
         Wk[i] = W_init.copy()
 
@@ -189,7 +189,7 @@ def solve_images(J, W_m, alpha, W_init, gamma=1, beta=1, lambda_w=0.005, lambda_
     W = W_init.copy()
 
     # Iterations
-    for _ in xrange(iters):
+    for _ in range(iters):
 
         print("------------------------------------")
         print("Iteration: %d"%(_))
@@ -208,7 +208,7 @@ def solve_images(J, W_m, alpha, W_init, gamma=1, beta=1, lambda_w=0.005, lambda_
         alpha_diag = diags(alpha.reshape(-1))
         alpha_bar_diag = diags((1-alpha).reshape(-1))
 
-        for i in xrange(K):
+        for i in range(K):
             # prep vars
             Wkx = cv2.Sobel(Wk[i], cv2.CV_64F, 1, 0, 3)
             Wky = cv2.Sobel(Wk[i], cv2.CV_64F, 0, 1, 3)

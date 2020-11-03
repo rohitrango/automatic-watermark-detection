@@ -31,8 +31,8 @@ def estimate_watermark(foldername):
 
 	# Compute gradients
 	print("Computing gradients.")
-	gradx = map(lambda x: cv2.Sobel(x, cv2.CV_64F, 1, 0, ksize=KERNEL_SIZE), images)
-	grady = map(lambda x: cv2.Sobel(x, cv2.CV_64F, 0, 1, ksize=KERNEL_SIZE), images)
+	gradx = list(map(lambda x: cv2.Sobel(x, cv2.CV_64F, 1, 0, ksize=KERNEL_SIZE), images))
+	grady = list(map(lambda x: cv2.Sobel(x, cv2.CV_64F, 0, 1, ksize=KERNEL_SIZE), images))
 
 	# Compute median of grads
 	print("Computing median gradients.")
@@ -114,7 +114,7 @@ def poisson_reconstruct(gradx, grady, kernel_size=KERNEL_SIZE, num_iters=100, h=
 	est[1:-1, 1:-1, :] = np.random.random((m-2, n-2, p))
 	loss = []
 
-	for i in xrange(num_iters):
+	for i in range(num_iters):
 		old_est = est.copy()
 		est[1:-1, 1:-1, :] = 0.25*(est[0:-2, 1:-1, :] + est[1:-1, 0:-2, :] + est[2:, 1:-1, :] + est[1:-1, 2:, :] - h*h*laplacian[1:-1, 1:-1, :])
 		error = np.sum(np.square(est-old_est))
@@ -176,7 +176,7 @@ def watermark_detector(img, gx, gy, thresh_low=200, thresh_high=220, printval=Fa
 	if printval:
 		print(index)
 
-	x,y = (index[0]-rect[0]/2), (index[1]-rect[1]/2)
+	x,y = (index[0]-rect[0]//2), (index[1]-rect[1]//2)
 	im = img.copy()
 	cv2.rectangle(im, (y, x), (y+rect[1], x+rect[0]), (255, 0, 0))
 	return (im, (x, y), (rect[0], rect[1]))
