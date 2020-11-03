@@ -1,13 +1,13 @@
 from src import *
 
-gx, gy, gxlist, gylist = estimate_watermark('images/fotolia_processed')
+gx, gy, gxlist, gylist = estimate_watermark('Resized')
 
 # est = poisson_reconstruct(gx, gy, np.zeros(gx.shape)[:,:,0])
 cropped_gx, cropped_gy = crop_watermark(gx, gy)
 W_m = poisson_reconstruct(cropped_gx, cropped_gy)
 
 # random photo
-img = cv2.imread('images/fotolia_processed/fotolia_137840645.jpg')
+img = cv2.imread('Resized/image0000.jpg')
 im, start, end = watermark_detector(img, cropped_gx, cropped_gy)
 
 # plt.imshow(im)
@@ -16,7 +16,7 @@ im, start, end = watermark_detector(img, cropped_gx, cropped_gy)
 # W_m is the cropped watermark
 num_images = len(gxlist)
 
-J, img_paths = get_cropped_images('images/fotolia_processed', num_images, start, end, cropped_gx.shape)
+J, img_paths = get_cropped_images('Resized', num_images, start, end, cropped_gx.shape)
 # get a random subset of J
 idx = [389, 144, 147, 468, 423, 92, 3, 354, 196, 53, 470, 445, 314, 349, 105, 366, 56, 168, 351, 15, 465, 368, 90, 96, 202, 54, 295, 137, 17, 79, 214, 413, 454, 305, 187, 4, 458, 330, 290, 73, 220, 118, 125, 180, 247, 243, 257, 194, 117, 320, 104, 252, 87, 95, 228, 324, 271, 398, 334, 148, 425, 190, 78, 151, 34, 310, 122, 376, 102, 260]
 idx = idx[:25]
@@ -29,13 +29,13 @@ alph = np.stack([alph_est, alph_est, alph_est], axis=2)
 C, est_Ik = estimate_blend_factor(J, Wm, alph)
 
 alpha = alph.copy()
-for i in xrange(3):
+for i in range(3):
 	alpha[:,:,i] = C[i]*alpha[:,:,i]
 
 Wm = Wm + alpha*est_Ik
 
 W = Wm.copy()
-for i in xrange(3):
+for i in range(3):
 	W[:,:,i]/=C[i]
 
 Jt = J[:25]
