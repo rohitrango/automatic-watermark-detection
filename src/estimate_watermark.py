@@ -26,9 +26,9 @@ def estimate_watermark(foldername):
     for r, dirs, files in os.walk(foldername):
         # Get all the images
         for file in files:
-            img = cv2.imread(os.sep.join([r, file])).astype(np.float32)
+            img = cv2.imread(os.sep.join([r, file]))
             if img is not None:
-                img = img / float(255)
+                img = normalized(img)
                 images.append(img)
             else:
                 print("%s not found." % (file))
