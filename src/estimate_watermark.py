@@ -26,8 +26,9 @@ def estimate_watermark(foldername):
     for r, dirs, files in os.walk(foldername):
         # Get all the images
         for file in files:
-            img = cv2.imread(os.sep.join([r, file]))
+            img = cv2.imread(os.sep.join([r, file])).astype(np.float32)
             if img is not None:
+				img /= 255.
                 images.append(img)
             else:
                 print("%s not found." % (file))
@@ -35,9 +36,9 @@ def estimate_watermark(foldername):
     # Compute gradients
     print("Computing gradients.")
     gradx = list(map(lambda x: cv2.Sobel(
-        x, cv2.CV_64F, 1, 0, ksize=KERNEL_SIZE), images))
+        x, cv2.CV_32F, 1, 0, ksize=KERNEL_SIZE), images))
     grady = list(map(lambda x: cv2.Sobel(
-        x, cv2.CV_64F, 0, 1, ksize=KERNEL_SIZE), images))
+        x, cv2.CV_32F, 0, 1, ksize=KERNEL_SIZE), images))
 
     # Compute median of grads
     print("Computing median gradients.")
@@ -107,8 +108,8 @@ def poisson_reconstruct(gradx, grady, kernel_size=KERNEL_SIZE, num_iters=100, h=
     Also return the squared difference of every step.
     h = convergence rate
     """
-    fxx = cv2.Sobel(gradx, cv2.CV_64F, 1, 0, ksize=kernel_size)
-    fyy = cv2.Sobel(grady, cv2.CV_64F, 0, 1, ksize=kernel_size)
+    fxx = cv2.Sobel(gradx, cv2.CV_32F, 1, 0, ksize=kernel_size)
+    fyy = cv2.Sobel(grady, cv2.CV_32F, 0, 1, ksize=kernel_size)
     laplacian = fxx + fyy
     m, n, p = laplacian.shape
 
