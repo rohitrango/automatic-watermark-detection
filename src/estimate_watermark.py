@@ -28,7 +28,7 @@ def estimate_watermark(foldername):
         for file in files:
             img = cv2.imread(os.sep.join([r, file])).astype(np.float32)
             if img is not None:
-				img /= 255.
+                img = img / float(255)
                 images.append(img)
             else:
                 print("%s not found." % (file))
