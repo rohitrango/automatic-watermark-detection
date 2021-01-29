@@ -29,26 +29,30 @@ def computeLaplacian(img, eps=10**(-7), win_rad=1):
     winI = ravelImg[win_inds]
 
     win_mu = np.mean(winI, axis=2, keepdims=True)
-    win_var = np.einsum('...ji,...jk ->...ik', winI, winI)/win_size - np.einsum('...ji,...jk ->...ik', win_mu, win_mu)
+    win_var = np.einsum('...ji,...jk ->...ik', winI, winI) / \
+        win_size - np.einsum('...ji,...jk ->...ik', win_mu, win_mu)
 
     inv = np.linalg.inv(win_var + (eps/win_size)*np.eye(3))
 
     X = np.einsum('...ij,...jk->...ik', winI - win_mu, inv)
-    vals = np.eye(win_size) - (1/win_size)*(1 + np.einsum('...ij,...kj->...ik', X, winI - win_mu))
+    vals = np.eye(win_size) - (1/win_size) * \
+        (1 + np.einsum('...ij,...kj->...ik', X, winI - win_mu))
 
     nz_indsCol = np.tile(win_inds, win_size).ravel()
     nz_indsRow = np.repeat(win_inds, win_size).ravel()
     nz_indsVal = vals.ravel()
-    L = scipy.sparse.coo_matrix((nz_indsVal, (nz_indsRow, nz_indsCol)), shape=(h*w, h*w))
+    L = scipy.sparse.coo_matrix(
+        (nz_indsVal, (nz_indsRow, nz_indsCol)), shape=(h*w, h*w))
     return L
 
 
 def closed_form_matte(img, scribbled_img, mylambda=100):
-    h, w,c  = img.shape
-    consts_map = (np.sum(abs(img - scribbled_img), axis=-1)>0.001).astype(np.float64)
+    h, w, c = img.shape
+    consts_map = (np.sum(abs(img - scribbled_img), axis=-1)
+                  > 0.001).astype(np.float32)
     #scribbled_img = rgb2gray(scribbled_img)
 
-    consts_vals = scribbled_img[:,:,0]*consts_map
+    consts_vals = scribbled_img[:, :, 0]*consts_map
     D_s = consts_map.ravel()
     b_s = consts_vals.ravel()
     # print("Computing Matting Laplacian")
