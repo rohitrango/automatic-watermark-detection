@@ -13,7 +13,7 @@ def get_cropped_images(foldername, num_images, start, end, shape):
     '''
     This is the part where we get all the images, extract their parts, and then add it to our matrix
     '''
-    images_cropped = np.zeros((num_images,) + shape)
+    images_cropped = np.zeros((num_images,) + shape, dtype=np.float32)
     # get images
     # Store all the watermarked images
     # start, and end are already stored
@@ -26,9 +26,10 @@ def get_cropped_images(foldername, num_images, start, end, shape):
     for r, dirs, files in os.walk(foldername):
 
         for file in files:
-            _img = cv2.imread(os.sep.join([r, file]))
+            _img = cv2.imread(os.sep.join([r, file])).astype(np.float32)
             if _img is not None:
                 # estimate the watermark part
+                _img = _img / float(255)
                 image_paths.append(os.sep.join([r, file]))
                 _img = _img[_s[0]:(_s[0]+_e[0]), _s[1]:(_s[1]+_e[1]), :]
                 # add to list images
@@ -123,20 +124,21 @@ def get_xSobel_matrix(m, n, p):
 # get estimated normalized alpha matte
 
 
-def estimate_normalized_alpha(J, W_m, num_images=30, threshold=170, invert=False, adaptive=False, adaptive_threshold=21, c2=10):
-    _Wm = (255*PlotImage(np.average(W_m, axis=2))).astype(np.uint8)
+def estimate_normalized_alpha(J, W_m, num_images=30, threshold=170/255, invert=False, adaptive=False, adaptive_threshold=21/255, c2=10/255):
+    #_Wm = (255*PlotImage(np.average(W_m, axis=2))).astype(np.uint8)
+    _Wm = (PlotImage(np.average(W_m, axis=2))).astype(np.float32)
     if adaptive:
         thr = cv2.adaptiveThreshold(
-            _Wm, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, adaptive_threshold, c2)
+            _Wm, 1, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, adaptive_threshold, c2)
     else:
-        ret, thr = cv2.threshold(_Wm, threshold, 255, cv2.THRESH_BINARY)
+        ret, thr = cv2.threshold(_Wm, threshold, 1, cv2.THRESH_BINARY)
 
     if invert:
-        thr = 255-thr
+        thr = 1-thr
     thr = np.stack([thr, thr, thr], axis=2)
 
     num, m, n, p = J.shape
-    alpha = np.zeros((num_images, m, n))
+    alpha = np.zeros((num_images, m, n), dtype=np.float32)
     iterpatch = 900
 
     print("Estimating normalized alpha using %d images." % (num_images))
@@ -150,11 +152,11 @@ def estimate_normalized_alpha(J, W_m, num_images=30, threshold=170, invert=False
     return alpha
 
 
-def estimate_blend_factor(J, W_m, alph, threshold=0.01*255):
+def estimate_blend_factor(J, W_m, alph, threshold=0.01):
     K, m, n, p = J.shape
-    Jm = (J - W_m)
-    gx_jm = np.zeros(J.shape)
-    gy_jm = np.zeros(J.shape)
+    Jm = (J - W_m).astype(np.float32)
+    gx_jm = np.zeros(J.shape, dtype=np.float32)
+    gy_jm = np.zeros(J.shape, dtype=np.float32)
 
     for i in range(K):
         gx_jm[i] = cv2.Sobel(Jm[i], cv2.CV_32F, 1, 0, 3)
@@ -162,7 +164,7 @@ def estimate_blend_factor(J, W_m, alph, threshold=0.01*255):
 
     Jm_grad = np.sqrt(gx_jm**2 + gy_jm**2)
 
-    est_Ik = alph*np.median(J, axis=0)
+    est_Ik = alph*np.median(J, axis=0).astype(np.float32)
     gx_estIk = cv2.Sobel(est_Ik, cv2.CV_32F, 1, 0, 3)
     gy_estIk = cv2.Sobel(est_Ik, cv2.CV_32F, 0, 1, 3)
     estIk_grad = np.sqrt(gx_estIk**2 + gy_estIk**2)
@@ -197,8 +199,8 @@ def solve_images(J, W_m, alpha, W_init, gamma=1, beta=1, lambda_w=0.005, lambda_
 
     sobelx = get_xSobel_matrix(m, n, p)
     sobely = get_ySobel_matrix(m, n, p)
-    Ik = np.zeros(J.shape)
-    Wk = np.zeros(J.shape)
+    Ik = np.zeros(J.shape, dtype=np.float32)
+    Wk = np.zeros(J.shape, dtype=np.float32)
     for i in range(K):
         Ik[i] = J[i] - W_m
         Wk[i] = W_init.copy()

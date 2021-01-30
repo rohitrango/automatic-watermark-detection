@@ -46,7 +46,7 @@ def computeLaplacian(img, eps=10**(-7), win_rad=1):
     return L
 
 
-def closed_form_matte(img, scribbled_img, mylambda=100):
+def closed_form_matte(img, scribbled_img, mylambda=100/255):
     h, w, c = img.shape
     consts_map = (np.sum(abs(img - scribbled_img), axis=-1)
                   > 0.001).astype(np.float32)
@@ -55,10 +55,12 @@ def closed_form_matte(img, scribbled_img, mylambda=100):
     consts_vals = scribbled_img[:, :, 0]*consts_map
     D_s = consts_map.ravel()
     b_s = consts_vals.ravel()
-    # print("Computing Matting Laplacian")
+
+    print("Computing Matting Laplacian")
     L = computeLaplacian(img)
     sD_s = scipy.sparse.diags(D_s)
-    # print("Solving for alpha")
+
+    print("Solving for alpha")
     x = scipy.sparse.linalg.spsolve(L + mylambda*sD_s, mylambda*b_s)
     alpha = np.minimum(np.maximum(x.reshape(h, w), 0), 1)
     return alpha

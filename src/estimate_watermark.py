@@ -26,9 +26,9 @@ def estimate_watermark(foldername):
     for r, dirs, files in os.walk(foldername):
         # Get all the images
         for file in files:
-            img = cv2.imread(os.sep.join([r, file]))
+            img = cv2.imread(os.sep.join([r, file])).astype(np.float32)
             if img is not None:
-                img = normalized(img)
+                img = img / float(255)
                 images.append(img)
             else:
                 print("%s not found." % (file))
@@ -42,8 +42,8 @@ def estimate_watermark(foldername):
 
     # Compute median of grads
     print("Computing median gradients.")
-    Wm_x = np.median(np.array(gradx), axis=0)
-    Wm_y = np.median(np.array(grady), axis=0)
+    Wm_x = np.median(np.array(gradx), axis=0).astype(np.float32)
+    Wm_y = np.median(np.array(grady), axis=0).astype(np.float32)
 
     return (Wm_x, Wm_y, gradx, grady)
 
@@ -64,7 +64,7 @@ def poisson_reconstruct2(gradx, grady, boundarysrc):
     # Laplacian
     gyy = grady[1:, :-1] - grady[:-1, :-1]
     gxx = gradx[:-1, 1:] - gradx[:-1, :-1]
-    f = numpy.zeros(boundarysrc.shape)
+    f = numpy.zeros(boundarysrc.shape, dtype=np.float32)
     f[:-1, 1:] += gxx
     f[1:, :-1] += gyy
 
@@ -114,13 +114,13 @@ def poisson_reconstruct(gradx, grady, kernel_size=KERNEL_SIZE, num_iters=100, h=
     m, n, p = laplacian.shape
 
     if boundary_zero == True:
-        est = np.zeros(laplacian.shape)
+        est = np.zeros(laplacian.shape, dtype=np.float32)
     else:
         assert(boundary_image is not None)
         assert(boundary_image.shape == laplacian.shape)
         est = boundary_image.copy()
 
-    est[1:-1, 1:-1, :] = np.random.random((m-2, n-2, p))
+    est[1:-1, 1:-1, :] = np.random.random((m-2, n-2, p)).astype(np.float32)
     loss = []
 
     for i in range(num_iters):
@@ -171,7 +171,7 @@ def normalized(img):
     return (2*PlotImage(img)-1)
 
 
-def watermark_detector(img, gx, gy, thresh_low=200, thresh_high=220, printval=False):
+def watermark_detector(img, gx, gy, thresh_low=200/255, thresh_high=220/255, printval=False):
     """
     Compute a verbose edge map using Canny edge detector, take its magnitude.
     Assuming cropped values of gradients are given.
