@@ -29,7 +29,7 @@ def get_cropped_images(foldername, num_images, start, end, shape):
             _img = cv2.imread(os.sep.join([r, file])).astype(np.float32)
             if _img is not None:
                 # estimate the watermark part
-                _img = _img / float(255)
+                _img = PlotImage(_img)
                 image_paths.append(os.sep.join([r, file]))
                 _img = _img[_s[0]:(_s[0]+_e[0]), _s[1]:(_s[1]+_e[1]), :]
                 # add to list images
@@ -124,13 +124,17 @@ def get_xSobel_matrix(m, n, p):
 # get estimated normalized alpha matte
 
 
-def estimate_normalized_alpha(J, W_m, num_images=30, threshold=170/255, invert=False, adaptive=False, adaptive_threshold=21/255, c2=10/255):
-    #_Wm = (255*PlotImage(np.average(W_m, axis=2))).astype(np.uint8)
-    _Wm = (PlotImage(np.average(W_m, axis=2))).astype(np.float32)
+def estimate_normalized_alpha(J, W_m, num_images=30, threshold=170/255, invert=False, adaptive=False, adaptive_blocksize=21, c2=10):
     if adaptive:
+        # the src image of adaptiveThreshold should be  CV_8UC1
+        # _Wm = (255 * PlotImage(np.average(W_m, axis=2))).astype(np.uint8)
+        _Wm = cv2.cvtColor(W_m, cv2.COLOR_BGR2GRAY)
+        _Wm = (255 * PlotImage(_Wm)).astype(np.uint8)
         thr = cv2.adaptiveThreshold(
-            _Wm, 1, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, adaptive_threshold, c2)
+            _Wm, 1, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, adaptive_blocksize, c2).astype(np.float32)
+        thr = thr / 255
     else:
+        _Wm = (PlotImage(np.average(W_m, axis=2))).astype(np.float32)
         ret, thr = cv2.threshold(_Wm, threshold, 1, cv2.THRESH_BINARY)
 
     if invert:
@@ -205,6 +209,9 @@ def solve_images(J, W_m, alpha, W_init, gamma=1, beta=1, lambda_w=0.005, lambda_
         Ik[i] = J[i] - W_m
         Wk[i] = W_init.copy()
 
+    plt.imshow(PlotImage(Ik[0]))
+    plt.show()
+
     # This is for median images
     W = W_init.copy()
 
@@ -274,7 +281,7 @@ def solve_images(J, W_m, alpha, W_init, gamma=1, beta=1, lambda_w=0.005, lambda_
             x = linalg.spsolve(A, b)
 
             Wk[i] = x[:size].reshape(m, n, p)
-            Ik[i] = J[i] - Wk[i]
+            Ik[i] = x[size:].reshape(m, n, p)
 
             plt.subplot(3, 1, 1)
             plt.imshow(PlotImage(J[i]))
@@ -288,7 +295,7 @@ def solve_images(J, W_m, alpha, W_init, gamma=1, beta=1, lambda_w=0.005, lambda_
 
         # Step 2
         print("Step 2")
-        W = np.median(Wk, axis=0)
+        W = np.median(Wk, axis=2)
 
         plt.imshow(PlotImage(W))
         plt.draw()

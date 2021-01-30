@@ -8,6 +8,7 @@ import math
 import numpy
 import scipy
 import scipy.fftpack
+import scipy.stats
 
 # Variables
 KERNEL_SIZE = 3
@@ -28,7 +29,7 @@ def estimate_watermark(foldername):
         for file in files:
             img = cv2.imread(os.sep.join([r, file])).astype(np.float32)
             if img is not None:
-                img = img / float(255)
+                img = PlotImage(img)
                 images.append(img)
             else:
                 print("%s not found." % (file))
@@ -53,41 +54,50 @@ def PlotImage(image):
     PlotImage: Give a normalized image matrix which can be used with implot, etc.
     Maps to [0, 1]
     """
-    im = image.astype(float)
-    return (im - np.min(im))/(np.max(im) - np.min(im))
+    im = image.astype(np.float32)
+    im = im - np.min(im, axis=(0, 1))
+    div = 1. / np.max(im, axis=(0, 1)) - np.min(im, axis=(0, 1))
+    return im * div
 
 
-def poisson_reconstruct2(gradx, grady, boundarysrc):
+def poisson_reconstruct2(gradx, grady, boundarysrc=None):
     # Thanks to Dr. Ramesh Raskar for providing the original matlab code from which this is derived
     # Dr. Raskar's version is available here: http://web.media.mit.edu/~raskar/photo/code.pdf
+
+    if boundarysrc is None:
+        boundarysrc = np.zeros(gradx.shape, dtype=np.float32)
 
     # Laplacian
     gyy = grady[1:, :-1] - grady[:-1, :-1]
     gxx = gradx[:-1, 1:] - gradx[:-1, :-1]
     f = numpy.zeros(boundarysrc.shape, dtype=np.float32)
-    f[:-1, 1:] += gxx
-    f[1:, :-1] += gyy
+    f[:-1, 1:, :] += gxx
+    f[1:, :-1, :] += gyy
 
     # Boundary image
     boundary = boundarysrc.copy()
-    boundary[1:-1, 1:-1] = 0
+    # boundary[1:-1, 1:-1] = 0
 
     # Subtract boundary contribution
-    f_bp = -4*boundary[1:-1, 1:-1] + boundary[1:-1, 2:] + \
-        boundary[1:-1, 0:-2] + boundary[2:, 1:-1] + boundary[0:-2, 1:-1]
-    f = f[1:-1, 1:-1] - f_bp
+    f_bp = -4*boundary[1:-1, 1:-1, :] + boundary[1:-1, 2:, :] + \
+        boundary[1:-1, 0:-2, :] + boundary[2:,
+                                           1:-1, :] + boundary[0:-2, 1:-1, :]
+    f = f[1:-1, 1:-1, :] - f_bp
 
     # Discrete Sine Transform
     tt = scipy.fftpack.dst(f, norm='ortho')
     fsin = scipy.fftpack.dst(tt.T, norm='ortho').T
+    print("fsin shape: {}".format(fsin.shape))
 
     # Eigenvalues
     (x, y) = numpy.meshgrid(
         range(1, f.shape[1]+1), range(1, f.shape[0]+1), copy=True)
     denom = (2*numpy.cos(math.pi*x/(f.shape[1]+2))-2) + \
-        (2*numpy.cos(math.pi*y/(f.shape[0]+2)) - 2)
+        (2 * numpy.cos(math.pi * y / (f.shape[0] + 2)) - 2)
+    print("denom shape: {}".format(denom.shape))
 
-    f = fsin/denom
+    for c in range(f.shape[2]):
+        f[:, :, c] = fsin[:, :, c]/denom
 
     # Inverse Discrete Sine Transform
     tt = scipy.fftpack.idst(f, norm='ortho')
@@ -96,6 +106,9 @@ def poisson_reconstruct2(gradx, grady, boundarysrc):
     # New center + old boundary
     result = boundary
     result[1:-1, 1:-1] = img_tt
+
+    # normalize
+    result = normalized(result)
 
     return result
 
@@ -111,6 +124,9 @@ def poisson_reconstruct(gradx, grady, kernel_size=KERNEL_SIZE, num_iters=100, h=
     fxx = cv2.Sobel(gradx, cv2.CV_32F, 1, 0, ksize=kernel_size)
     fyy = cv2.Sobel(grady, cv2.CV_32F, 0, 1, ksize=kernel_size)
     laplacian = fxx + fyy
+    # cv2.imshow("laplacian", laplacian)
+    # cv2.waitKey(0)
+
     m, n, p = laplacian.shape
 
     if boundary_zero == True:
@@ -130,6 +146,8 @@ def poisson_reconstruct(gradx, grady, kernel_size=KERNEL_SIZE, num_iters=100, h=
         error = np.sum(np.square(est-old_est))
         loss.append(error)
 
+    est = PlotImage(est)
+    print("miin: {}, max: {}".format(est.min(), est.max()))
     return (est)
 
 
