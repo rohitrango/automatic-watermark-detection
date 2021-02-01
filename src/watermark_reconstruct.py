@@ -295,7 +295,7 @@ def solve_images(J, W_m, alpha, W_init, gamma=1, beta=1, lambda_w=0.005, lambda_
 
         # Step 2
         print("Step 2")
-        W = np.median(Wk, axis=2)
+        W = np.median(Wk, axis=0)
 
         plt.imshow(PlotImage(W))
         plt.draw()

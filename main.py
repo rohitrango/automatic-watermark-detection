@@ -84,25 +84,37 @@ Jt = J[: 25]
 # now we have the values of alpha, Wm, J
 # Solve for all images
 Wk, Ik, W, alpha1 = solve_images(
-    Jt, W_m, alpha, W, gamma=1, beta=0.005, lambda_i=0.5, lambda_a=0.01, lambda_w=0.005, iters=1)
+    J=Jt, W_m=W_m, alpha=alpha, W_init=W, gamma=1, beta=1, lambda_w=0.005, lambda_i=1, lambda_a=0.01, iters=1)
 
 W = PlotImage(W)
-# alpha1 = PlotImage(alpha1)
+
+cv2.imshow("alpha1", PlotImage(alpha1))
+cv2.waitKey(0)
 
 cv2.imshow("W", PlotImage(W))
 cv2.waitKey(0)
 
-I = PlotImage((J - alpha1 * W))
+cv2.imshow("Wk", PlotImage(Wk[0]))
+cv2.waitKey(0)
+
+cv2.imshow("Ik", PlotImage(Ik[0]))
+cv2.waitKey(0)
+
+I = PlotImage((J - alpha1 * W) / (1 - alpha1))
 II = PlotImage((J - alpha1 * Wk) / (1 - alpha1))
 
 cv2.imshow("I[0]", I[0])
 cv2.waitKey(0)
 
+cv2.imshow("II[0]", II[0])
+cv2.waitKey(0)
+
+
 for i in range(num_images):
     filename = os.listdir(forldername)[i]
     im = cv2.imread(os.path.join(forldername, filename))
     im[start[0]:(start[0] + end[0]), start[1]:(start[1] + end[1]),
-       :] = (I[i]*255).astype(np.uint8)
+       :] = (PlotImage(Ik[i])*255).astype(np.uint8)
     cv2.imwrite(os.path.join(resultdir, filename), im)
     # W_m_threshold = (255*PlotImage(np.average(W_m, axis=2))).astype(np.uint8)
     # ret, thr = cv2.threshold(W_m_threshold, 127, 255, cv2.THRESH_BINARY)
